@@ -1,6 +1,6 @@
 #include "lora_app.h"
 #include "lora_cfg.h"
-#include "usart3.h"
+#include "usart2.h"
 #include "led.h"
 #include "delay.h"
 
@@ -10,7 +10,6 @@
     2.想要发送数据包直接调用 LoRa_SendData()即可
     3.Lora_mode会在LoRa_SendData()和EXTI4_IRQHandler()中自动切换
     4.Int_mode会在EXTI4_IRQHandler()中自动切换
-
 
 ************************************************/
 
@@ -64,14 +63,14 @@ void EXTI4_IRQHandler(void)
         if(Int_mode==1)//上升沿(发送:开始发送数据 接收:数据开始输出)
         {
             if(Lora_mode==1)//接收模式
-                USART3_RX_STA=0;//数据计数清0
+                USART2_RX_STA=0;//数据计数清0
             Int_mode=2;//设置下降沿触发
             LED0=0;//DS0亮
         }
         else if(Int_mode==2)//下降沿(发送:数据已发送完 接收:数据输出结束)
         {
             if(Lora_mode==1)//接收模式
-                USART3_RX_STA|=1<<15;//数据计数标记完成
+                USART2_RX_STA|=1<<15;//数据计数标记完成
             else if(Lora_mode==2)//发送模式(串口数据发送完毕)
                 Lora_mode=1;//进入接收模式
             Int_mode=1;//设置上升沿触发
@@ -124,7 +123,7 @@ u8 LoRa_Init(void)
         delay_ms(500);
     }
 
-    usart3_init(115200);//初始化串口3
+    usart2_init(115200);//初始化串口2
 
     LORA_MD0=1;//进入AT模式
     delay_ms(40);
@@ -144,8 +143,8 @@ void LoRa_Set(void)
     u8 sendbuf[20];
     u8 lora_addrh,lora_addrl=0;
 
-    usart3_set(LORA_TTLBPS_115200,LORA_TTLPAR_8N1);//进入配置模式前设置通信波特率和校验位(115200 8位数据 1位停止 无数据校验）
-    usart3_rx(1);//开启串口3接收
+    usart2_set(LORA_TTLBPS_115200,LORA_TTLPAR_8N1);//进入配置模式前设置通信波特率和校验位(115200 8位数据 1位停止 无数据校验）
+    usart2_rx(1);//开启串口2接收
 
     while(LORA_AUX);//等待模块空闲
     LORA_MD0=1; //进入配置模式
@@ -172,9 +171,9 @@ void LoRa_Set(void)
     LORA_MD0=0;//退出配置,进入通信
     delay_ms(40);
     while(LORA_AUX);//判断是否空闲(模块会重新配置参数)
-    USART3_RX_STA=0;
+    USART2_RX_STA=0;
     Lora_mode=1;//标记"接收模式"
-    usart3_set(LoRa_CFG.bps,LoRa_CFG.parity);//返回通信,更新通信串口配置(波特率、数据校验位)
+    usart2_set(LoRa_CFG.bps,LoRa_CFG.parity);//返回通信,更新通信串口配置(波特率、数据校验位)
     Aux_Int(1);//设置LORA_AUX上升沿中断
 
 }
@@ -200,7 +199,7 @@ void LoRa_SendData(u8 addh,u8 addl,u8 chn,u8 *Dire_Date,u8 Dire_DateLen)
     {
 // printf("LORA_STA_Tran\n");
         sprintf((char*)Tran_Data,"ATK-LORA-01 TEST");
-        u3_printf("%s\r\n",Tran_Data);
+        u2_printf("%s\r\n",Tran_Data);
     } else if(LoRa_CFG.mode_sta == LORA_STA_Dire)//定向传输
     {
 // printf("LORA_STA_Dire\n");
@@ -215,8 +214,8 @@ void LoRa_SendData(u8 addh,u8 addl,u8 chn,u8 *Dire_Date,u8 Dire_DateLen)
         }
         for(i=0; i<(Dire_DateLen+3); i++)
         {
-            while(USART_GetFlagStatus(USART3,USART_FLAG_TC)==RESET);//循环发送,直到发送完毕
-            USART_SendData(USART3,date[i]);
+            while(USART_GetFlagStatus(USART2,USART_FLAG_TC)==RESET);//循环发送,直到发送完毕
+            USART_SendData(USART2,date[i]);
         }
         printf("senddata= ");
 		for(i=0; i<(Dire_DateLen+3); i++)
@@ -232,11 +231,11 @@ void LoRa_SendData(u8 addh,u8 addl,u8 chn,u8 *Dire_Date,u8 Dire_DateLen)
 u8* lora_check_cmd(u8 *str)
 {
     char *strx=0;
-    if(USART3_RX_STA&0X8000)		//接收到一次数据了
+    if(USART2_RX_STA&0X8000)		//接收到一次数据了
     {
-		printf("%s",(const char*)USART3_RX_BUF);
-        USART3_RX_BUF[USART3_RX_STA&0X7FFF]=0;//添加结束符
-        strx=strstr((const char*)USART3_RX_BUF,(const char*)str);
+		printf("%s",(const char*)USART2_RX_BUF);
+        USART2_RX_BUF[USART2_RX_STA&0X7FFF]=0;//添加结束符
+        strx=strstr((const char*)USART2_RX_BUF,(const char*)str);
     }
     return (u8*)strx;
 }
@@ -249,22 +248,22 @@ u8* lora_check_cmd(u8 *str)
 u8 lora_send_cmd(u8 *cmd,u8 *ack,u16 waittime)
 {
     u8 res=0;
-    USART3_RX_STA=0;
+    USART2_RX_STA=0;
     if((u32)cmd<=0XFF)
     {
-        while((USART3->SR&0X40)==0);//等待上一次数据发送完成
-        USART3->DR=(u32)cmd;
-    } else u3_printf("%s\r\n",cmd);//发送命令
+        while((USART2->SR&0X40)==0);//等待上一次数据发送完成
+        USART2->DR=(u32)cmd;
+    } else u2_printf("%s\r\n",cmd);//发送命令
 
     if(ack&&waittime)		//需要等待应答
     {
         while(--waittime)	//等待倒计时
         {
             delay_ms(10);
-            if(USART3_RX_STA&0X8000)//接收到期待的应答结果
+            if(USART2_RX_STA&0X8000)//接收到期待的应答结果
             {
                 if(lora_check_cmd(ack))break;//得到有效数据
-                USART3_RX_STA=0;
+                USART2_RX_STA=0;
             }
         }
         if(waittime==0) res=1;

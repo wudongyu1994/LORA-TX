@@ -5,7 +5,7 @@
 #include "timer.h"
 #include "exti.h"
 #include "lora_app.h"
-#include "usart3.h"
+#include "usart2.h"
 
 /************************************************
 逻辑摘要
@@ -58,17 +58,17 @@ printf("add= %x %x %x %x %x\n",MY_ADDRH,MY_ADDRL,OBJ_ADDRH,OBJ_ADDRL,len);
             LoRa_SendData(OBJ_ADDRH,OBJ_ADDRL,OBJ_CHN,sendData);            //发送数据
         }*/
 
-        if(USART3_RX_STA&0X8000){
+        if(USART2_RX_STA&0X8000){
             printf("data receive= ");
-            for(i=0;i<(USART3_RX_STA&0x7fff);i++){
-                printf("%x ",USART3_RX_BUF[i]);
-                data_rev[i]=USART3_RX_BUF[i];
+            for(i=0;i<(USART2_RX_STA&0x7fff);i++){
+                printf("%x ",USART2_RX_BUF[i]);
+                data_rev[i]=USART2_RX_BUF[i];
             }
             printf("\n");
             if(data_rev[0]==0x80 && data_rev[1]==0x01 && data_rev[2]==0x50 && data_rev[3]==0x51 && data_rev[4]==0x81){
                 TIM_Cmd(TIM3,DISABLE);
             }
-            USART3_RX_STA=0;
+            USART2_RX_STA=0;
         }
         if(flag_thing_done){
             flag_thing_done=false;
