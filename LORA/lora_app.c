@@ -6,6 +6,7 @@
 
 /************************************************
 逻辑摘要
+    0.外部仅仅需要调用 lora_atk_init() 即可完成初始化，然后调用 LoRa_SendData(OBJ_ADDRH,OBJ_ADDRL,OBJ_CHN,sendData,len) 即可发送数据。
     1.LoRa模块在LoRa_Init()和LoRa_Set()之后就可以开始正常使用了
     2.想要发送数据包直接调用 LoRa_SendData()即可
     3.Lora_mode会在LoRa_SendData()和EXTI4_IRQHandler()中自动切换
@@ -29,6 +30,56 @@ _LoRa_CFG LoRa_CFG=
 //全局参数
 EXTI_InitTypeDef EXTI_InitStructure;
 NVIC_InitTypeDef NVIC_InitStructure;
+
+
+//lora发送命令后,检测接收到的应答
+//str:期待的应答结果
+//返回值:0,没有得到期待的应答结果
+//其他,期待应答结果的位置(str的位置)
+u8* lora_check_cmd(u8 *str)
+{
+    char *strx=0;
+    if(USART2_RX_STA&0X8000)        //接收到一次数据了
+    {
+        printf("-----lora-----\n");
+        printf("%s",(const char*)USART2_RX_BUF);
+        printf("====================end\n");
+        USART2_RX_BUF[USART2_RX_STA&0X7FFF]=0;//添加结束符
+        strx=strstr((const char*)USART2_RX_BUF,(const char*)str);
+    }
+    return (u8*)strx;
+}
+//lora发送命令
+//cmd:发送的命令字符串(不需要添加回车了),当cmd<0XFF的时候,发送数字(比如发送0X1A),大于的时候发送字符串.
+//ack:期待的应答结果,如果为空,则表示不需要等待应答
+//waittime:等待时间(单位:10ms)
+//返回值:0,发送成功(得到了期待的应答结果)
+//       1,发送失败
+u8 lora_send_cmd(u8 *cmd,u8 *ack,u16 waittime)
+{
+    u8 res=0;
+    USART2_RX_STA=0;
+    if((u32)cmd<=0XFF)
+    {
+        while((USART2->SR&0X40)==0);//等待上一次数据发送完成
+        USART2->DR=(u32)cmd;
+    } else u2_printf("%s\r\n",cmd);//发送命令
+
+    if(ack&&waittime)       //需要等待应答
+    {
+        while(--waittime)   //等待倒计时
+        {
+            delay_ms(10);
+            if(USART2_RX_STA&0X8000)//接收到期待的应答结果
+            {
+                if(lora_check_cmd(ack))break;//得到有效数据
+                USART2_RX_STA=0;
+            }
+        }
+        if(waittime==0) res=1;
+    }
+    return res;
+}
 
 //设备工作模式(用于记录设备状态)
 u8 Lora_mode=0;//0:配置模式 1:接收模式 2:发送模式
@@ -224,49 +275,15 @@ void LoRa_SendData(u8 addh,u8 addl,u8 chn,u8 *Dire_Date,u8 Dire_DateLen)
     }
 }
 
-//lora发送命令后,检测接收到的应答
-//str:期待的应答结果
-//返回值:0,没有得到期待的应答结果
-//其他,期待应答结果的位置(str的位置)
-u8* lora_check_cmd(u8 *str)
-{
-    char *strx=0;
-    if(USART2_RX_STA&0X8000)		//接收到一次数据了
+u8 test[]={1,2,3,4,5};
+// 该函数完成所有初始化和设置过程，带阻塞，直到检测到lora位置才跳出
+void lora_atk_init(void){
+    while(LoRa_Init())  //初始化ATK-LORA-01模块,若初始化失败则300ms后重试，直到成功
     {
-		printf("%s",(const char*)USART2_RX_BUF);
-        USART2_RX_BUF[USART2_RX_STA&0X7FFF]=0;//添加结束符
-        strx=strstr((const char*)USART2_RX_BUF,(const char*)str);
+        printf("LoRa undetected...\n");
+        delay_ms(300);
     }
-    return (u8*)strx;
-}
-//lora发送命令
-//cmd:发送的命令字符串(不需要添加回车了),当cmd<0XFF的时候,发送数字(比如发送0X1A),大于的时候发送字符串.
-//ack:期待的应答结果,如果为空,则表示不需要等待应答
-//waittime:等待时间(单位:10ms)
-//返回值:0,发送成功(得到了期待的应答结果)
-//       1,发送失败
-u8 lora_send_cmd(u8 *cmd,u8 *ack,u16 waittime)
-{
-    u8 res=0;
-    USART2_RX_STA=0;
-    if((u32)cmd<=0XFF)
-    {
-        while((USART2->SR&0X40)==0);//等待上一次数据发送完成
-        USART2->DR=(u32)cmd;
-    } else u2_printf("%s\r\n",cmd);//发送命令
-
-    if(ack&&waittime)		//需要等待应答
-    {
-        while(--waittime)	//等待倒计时
-        {
-            delay_ms(10);
-            if(USART2_RX_STA&0X8000)//接收到期待的应答结果
-            {
-                if(lora_check_cmd(ack))break;//得到有效数据
-                USART2_RX_STA=0;
-            }
-        }
-        if(waittime==0) res=1;
-    }
-    return res;
+    printf("LoRa detected!\n");
+    LoRa_Set();     //LoRa配置(进入配置需设置串口波特率为115200)
+    LoRa_SendData(OBJ_ADDRH,OBJ_ADDRL,OBJ_CHN,test,5);
 }

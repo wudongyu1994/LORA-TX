@@ -19,12 +19,10 @@
 int main(void)
 {
 	u8 i;
-    u8 hour=1,min=2,locx=5,locy=6,crc=0;
+    u8 hour=1,min=2,locx=0,locy=2,crc=0;
     u8 data_rev[1024];
 			//		      0,	1,	 2,	  3,	   4,		5,	 6,	 7,	  8,   9,  10
     u8 sendData[]=      {0x80,0x07,0x11,MY_ADDRH,MY_ADDRL,hour,min,locx,locy,crc,0x81};
-    u8 test[]={1,2,3,4,5};
-    // u8 sendData_old[]=  {0x80,0x07,0x11,MY_ADDRH,MY_ADDRL,hour,min,locx,locy,crc,0x81};
 
     u8 len= sizeof(sendData)/sizeof(sendData[0]);
 
@@ -35,18 +33,9 @@ int main(void)
     printf("uart1_init success!\n");
     LED_Init();
     TIM3_Int_Init(4999,7999);
+    lora_atk_init();
 
-    while(LoRa_Init())  //初始化ATK-LORA-01模块,若初始化失败则300ms后重试，直到成功
-    {
-        printf("LoRa undetected...\n");
-        delay_ms(300);
-    }
-    printf("LoRa detected!\n");
-    
-    LoRa_Set();     //LoRa配置(进入配置需设置串口波特率为115200)
-    LoRa_SendData(OBJ_ADDRH,OBJ_ADDRL,OBJ_CHN,test,5);
     printf("start while(1)\n");
-printf("add= %x %x %x %x %x\n",MY_ADDRH,MY_ADDRL,OBJ_ADDRH,OBJ_ADDRL,len);
     while(1)
     {
         /*if(flag_thing_done){
@@ -72,7 +61,7 @@ printf("add= %x %x %x %x %x\n",MY_ADDRH,MY_ADDRL,OBJ_ADDRH,OBJ_ADDRL,len);
         }
         if(flag_thing_done){
             flag_thing_done=false;
-            sendData[8]++;
+            // sendData[8]++;
             for(i=1,crc=0; i<9; i++)
                crc+=sendData[i];
             sendData[9]=crc;
